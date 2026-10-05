@@ -6,10 +6,11 @@ measures that. Give it one feature table (one row per image or well) plus the la
 and it produces a one-page HTML report with: how well each nuisance variable can be predicted from the features
 (shortcut capacity), how well the label can be predicted from the nuisance variables alone (confounding baseline),
 and the score gap between a random split and a held-out-group split. Every probe uses the same classifier
-(standardize + logistic regression, C=0.1) and the same metric (balanced accuracy). Nuisance-probe and split-comparison
-scores are printed next to a permutation null computed on the same split; the label-from-nuisance baseline is read
-against chance. A confound-injection test is available as a library function (`shortcut_audit.confound_injection`) and is
-used by the reproduction scripts, but is not yet a row of the report. It runs on a laptop CPU, with no paid services and no
+(standardize + logistic regression, C=0.1) and the same metric (balanced accuracy). The nuisance probe, the
+label-from-nuisance baseline and every split are printed next to a permutation null computed on the same split (whole
+groups are permuted when the nuisance is nested in `--group`). Each report also runs a confound-injection stress test
+per nuisance column: it ties the label to that nuisance in a training set on purpose and shows how far the held-out
+score falls, next to an unconfounded control of the same size. It runs on a laptop CPU, with no paid services and no
 private data. The two public datasets used for reproduction are JUMP Cell Painting (CC0) and the Organ-on-a-Chip
 Image Dataset (CC-BY-4.0).
 
@@ -54,7 +55,7 @@ below the random-split score.
 ```
 python audit.py TABLE --label COL --nuisance COL [COL ...]
                 [--group COL] [--control-value VALUE] [--features COL ...]
-                [--perm N] [--out report.html] [--title TEXT]
+                [--perm N] [--no-inject] [--out report.html] [--title TEXT]
 ```
 
 - `TABLE`: csv, parquet or npz. One row per sample.
@@ -64,11 +65,14 @@ python audit.py TABLE --label COL --nuisance COL [COL ...]
 - `--control-value`: run the nuisance probe only on samples with this label (for example `DMSO`), so biology is held constant.
 - `--features`: feature columns; default is every numeric column that is not metadata.
 - `--perm`: label permutations per probe for the null baseline (default 5, 0 = off).
+- `--no-inject`: skip the confound-injection stress test (it needs at least as many nuisance levels as labels).
 
 Display thresholds in the report (aids, not statistical tests; all numbers are shown):
 nuisance probe >= 2x chance and above the permutation-null maximum is "shortcut capacity present";
 label-from-nuisance >= chance + 0.05 is "confounded"; a held-out-group score >= 0.05 below the random split is
-"part of the score leans on the shortcut".
+"part of the score leans on the shortcut"; a confounded-training CV >= 0.10 above its held-out score is "exploitable".
+Progress is printed with elapsed time; on the 3,072-image OoC table (768 features) a full run took 151 s on a
+6-core desktop CPU (Intel i5-8500).
 
 ## Reproducing the JUMP results
 
