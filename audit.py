@@ -10,8 +10,11 @@ Reading rules printed in the report (display thresholds, not statistical tests â
   - nuisance probe: >= 2x chance AND above the permutation null max -> "shortcut capacity present"
   - label from nuisance only: >= chance + 0.05 -> "confounded: random-split scores can be inflated"
   - split gap: held-out group >= 0.05 below random split -> "part of the score leans on the shortcut"
-Every score is reported next to a permutation null computed with the SAME split, because 1/n_classes is chance
-only under random splits; grouped CV with no signal can land below it.
+  - confound injection (stress test): CV on a training set where the label is tied to the nuisance exceeds the
+    held-out score by >= 0.10 -> "exploitable: a confounded training set would inflate CV"
+Probes 1-3 are reported next to a permutation null computed with the SAME split, because 1/n_classes is chance
+only under random splits; grouped CV with no signal can land below it. When the nuisance is nested in --group
+(e.g. lab > plate), the null permutes whole groups so that the number of groups per class is kept.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ import html
 import json
 import os
 import sys
+import time
 
 import numpy as np
 import pandas as pd
@@ -51,6 +55,14 @@ def verdicts(res):
         flag = r["bal_acc"] >= r["chance"] + 0.05
         out.append((f"Label from nuisance only: {name}", r["bal_acc"], r["chance"], _null(r),
                     "confounded: random-split scores can be inflated" if flag else "weak confounding"))
+    for name, r in res.get("confound_injection", {}).items():
+        if "skipped" in r:
+            continue
+        gap = r["inflated_cv"] - r["confounded_on_heldout"]
+        out.append((f"Confound injection: {name}", r["confounded_on_heldout"], r["chance"], float("nan"),
+                    f"confounded CV {r['inflated_cv']:.3f} vs held-out {r['confounded_on_heldout']:.3f} "
+                    f"(unconfounded control {r['balanced_on_heldout']:.3f}): "
+                    + ("exploitable: a confounded training set would inflate CV" if gap >= 0.10 else "little inflation")))
     for row in res["split_compare"][1:]:
         flag = row["gap_vs_random"] <= -0.05
         out.append((f"Split gap: {row['split']}", row["bal_acc"], row["chance"], _null(row),
@@ -78,7 +90,9 @@ nuisance candidates: {html.escape(', '.join(res['nuisance_cols']))}</p>
 <h2>Split comparison</h2>{sc}
 <p>Every probe uses the same classifier (standardize + logistic regression, C=0.1) and the same metric.
 Thresholds are display aids, not statistical tests. Read each score against the permutation null of its own split:
-grouped cross-validation with no signal can fall below 1/k.</p>
+grouped cross-validation with no signal can fall below 1/k. Confound injection is a stress test: it builds a training
+set in which each label comes from its own nuisance levels and scores it on held-out levels; its row shows the
+held-out score, with the inflated CV and an unconfounded control of the same size in the reading.</p>
 <details><summary>Raw results (JSON)</summary><pre>{html.escape(json.dumps(res, indent=1, default=float))}</pre></details>
 """
     with open(path, "w") as f:
@@ -94,9 +108,15 @@ def main():
     ap.add_argument("--control-value", help="run the nuisance probe only on samples with this label (e.g. DMSO)")
     ap.add_argument("--features", nargs="*", help="feature columns (default: numeric columns minus metadata)")
     ap.add_argument("--perm", type=int, default=5, help="label permutations per probe for the null (0 = off)")
+    ap.add_argument("--no-inject", action="store_true", help="skip the confound-injection stress test")
     ap.add_argument("--out", default="shortcut_audit_report.html")
     ap.add_argument("--title", default="Shortcut audit")
     a = ap.parse_args()
+    t0 = time.time()
+
+    def log(msg):
+        print(f"[{time.time() - t0:6.1f}s] {msg}", flush=True)
+
     df = load_table(a.table).dropna(subset=[a.label])
     meta = set([a.label] + a.nuisance + ([a.group] if a.group else []))
     feats = a.features or [c for c in df.columns if c not in meta and pd.api.types.is_numeric_dtype(df[c])]
@@ -105,8 +125,9 @@ def main():
     df, X = df[ok].reset_index(drop=True), X[ok]
     y = df[a.label].astype(str).to_numpy()
     group = df[a.group].astype(str).to_numpy() if a.group else None
+    log(f"loaded {len(df)} samples x {len(feats)} features; label '{a.label}', nuisance {', '.join(a.nuisance)}")
     res = {"n": int(len(df)), "n_features": len(feats), "label": a.label, "nuisance_cols": a.nuisance,
-           "nuisance": {}, "label_from_nuisance": {}}
+           "nuisance": {}, "label_from_nuisance": {}, "confound_injection": {}}
     ctl = (y == a.control_value) if a.control_value else np.ones(len(y), bool)
     for c in a.nuisance:
         nu = df[c].astype(str).to_numpy()
@@ -115,18 +136,29 @@ def main():
             r = sa.nuisance_probe(X[ctl], nu[ctl], groups=g)
             if a.perm:
                 sp = sa.group_splits(g) if g is not None else sa.random_splits(nu[ctl])
-                r["null"] = sa.permutation_null(X[ctl], nu[ctl], sp, a.perm)
+                r["null"] = sa.permutation_null(X[ctl], nu[ctl], sp, a.perm, groups=g)
             res["nuisance"][c] = r
-        res["label_from_nuisance"][c] = sa.label_from_nuisance(y, df[[c]])
+            log(f"nuisance probe     {c:<12} {r['bal_acc']:.3f}  (chance {r['chance']:.3f}, null {r.get('null', {}).get('null_mean', float('nan')):.3f})")
+        res["label_from_nuisance"][c] = sa.label_from_nuisance(y, df[[c]], n_perm=a.perm)
+        log(f"label from nuisance {c:<11} {res['label_from_nuisance'][c]['bal_acc']:.3f}  (chance {res['label_from_nuisance'][c]['chance']:.3f})")
+        if not a.no_inject:
+            try:
+                ci = res["confound_injection"][c] = sa.confound_injection(X, y, nu)
+                log(f"confound injection {c:<12} CV {ci['inflated_cv']:.3f} -> held-out {ci['confounded_on_heldout']:.3f}")
+            except ValueError as e:
+                res["confound_injection"][c] = {"skipped": str(e)}
+                log(f"confound injection {c:<12} skipped: {e}")
     groups = {c: df[c].astype(str).to_numpy() for c in a.nuisance}
     sc = sa.split_compare(X, y, groups).to_dict(orient="records")
     if a.perm:
         sc[0]["null"] = sa.permutation_null(X, y, sa.random_splits(y), a.perm)
         for row, (c, g) in zip(sc[1:], groups.items()):
             row["null"] = sa.permutation_null(X, y, sa.group_splits(g), a.perm)
+    for row in sc:
+        log(f"split {row['split']:<20} {row['bal_acc']:.3f}  ({row['gap_vs_random']:+.3f} vs random)")
     res["split_compare"] = sc
     render(res, a.out, a.title)
-    print("report:", a.out)
+    log(f"report: {a.out}")
 
 
 if __name__ == "__main__":

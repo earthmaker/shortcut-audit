@@ -168,8 +168,11 @@ about any published model's reported accuracy.
 | 8 positive controls: random / plate / batch / lab held out | 0.946 / 0.946 / 0.934 / 0.855 | 0.941 / 0.942 / 0.927 / 0.863 |
 | Confound injection: confounded CV / held-out batches / control | 0.962 / 0.854 / 0.914 | 0.956 / 0.856 / 0.898 |
 
-Reading: Harmony mixes batches, not labs, so the larger lab signal in DMSO wells after correction is noise that the
-correction does not target; it is not evidence that Harmony "increased the lab effect". The standard deviation of lab
+Reading: the release-pinned recipe configuration for these files (jump-profiling-recipe commit a917fa7,
+`inputs/compound.json`) keys Harmony on `Metadata_Source`, i.e. it mixes labs. Even so, lab identity became easier to
+read from DMSO wells after correction. Harmony aligns each lab's overall distribution, dominated by compound wells, and
+the small DMSO subset can move apart in the process; this is not evidence that Harmony "increased the lab effect" in
+general, and we did not re-run Harmony. The standard deviation of lab
 means is written by `reproduce_jump.py` (`dmso_between_source_sd`). Numbers in this table are from one Linux run
 (scikit-learn 1.9.1, Python 3.11); other machines can differ in the third decimal. Permutation nulls for every split were 0.123-0.127
 (1/k = 0.125), so grouped CV was not biased here.

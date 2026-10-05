@@ -52,8 +52,19 @@ def main():
     sp = sa.group_splits(src)
     s0 = sa._cv_score(X, y, sp)
     pn = sa.permutation_null(X, y, sp, n_perm=3)
-    print("permutation:", round(s0, 3), {k: round(v, 3) for k, v in pn.items()})
+    print("permutation:", round(s0, 3), {k: (round(v, 3) if isinstance(v, float) else v) for k, v in pn.items()})
     assert abs(s0 - pn["null_mean"]) < 0.05
+    # group permutation: with lab > plate, a no-signal lab probe (0.071) sits below 1/k but inside the
+    # group-permutation null; a sample-level shuffle breaks the nesting and returns to 1/k (0.169).
+    X, y, src, plate = make(label_sig=2.0)
+    sp = sa.group_splits(plate)
+    s0 = sa._cv_score(X, src, sp)
+    gn = sa.permutation_null(X, src, sp, n_perm=20, groups=plate)
+    sn = sa.permutation_null(X, src, sp, n_perm=5)
+    print("group permutation:", round(s0, 3), {k: (round(v, 3) if isinstance(v, float) else v) for k, v in gn.items()},
+          "/ sample permutation", round(sn["null_mean"], 3))
+    assert gn["level"] == "group" and sn["level"] == "sample" and gn["null_min"] <= s0 <= gn["null_max"]
+    assert s0 < sn["null_mean"] - 0.05 and gn["null_mean"] < sn["null_mean"] - 0.03
     print("PASS")
 
 

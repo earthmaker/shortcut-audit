@@ -60,12 +60,16 @@ def nuisance_probe(X, nuisance, groups=None, k=5) -> dict:
             "classes": int(len(np.unique(y)))}
 
 
-def label_from_nuisance(y, nuisance_df: pd.DataFrame, groups=None, k=5) -> dict:
-    """Features are not used. Predict the label from one-hot nuisance columns only."""
+def label_from_nuisance(y, nuisance_df: pd.DataFrame, groups=None, k=5, n_perm=0, seed=0) -> dict:
+    """Features are not used. Predict the label from one-hot nuisance columns only.
+    With n_perm > 0 a same-split permutation null is added."""
     Z = OneHotEncoder(handle_unknown="ignore", sparse_output=False).fit_transform(nuisance_df.astype(str))
     y = np.asarray(y)
     splits = group_splits(groups, k) if groups is not None else random_splits(y, k)
-    return {"bal_acc": _cv_score(Z, y, splits), "chance": 1 / len(np.unique(y)), "n": len(y)}
+    r = {"bal_acc": _cv_score(Z, y, splits), "chance": 1 / len(np.unique(y)), "n": len(y)}
+    if n_perm:
+        r["null"] = permutation_null(Z, y, splits, n_perm, seed)
+    return r
 
 
 def split_compare(X, y, group_cols: dict, k=5) -> pd.DataFrame:
@@ -122,14 +126,29 @@ def confound_injection(X, y, nuisance, seed=0, test_frac_groups=0.3) -> dict:
             "test_levels": [str(v) for v in test_lv]}
 
 
-def permutation_null(X, y, splits, n_perm=5, seed=0) -> dict:
+def permutation_null(X, y, splits, n_perm=5, seed=0, groups=None) -> dict:
     """Score with labels shuffled on the same splits: the "no signal" baseline for this split.
 
-    1/n_classes is chance only for random splits. With grouped splits the class mix of training and test folds
-    diverges, so a score can land below chance even with no signal (synthetic measurement: 0.07 vs 0.167). Read
-    probe scores next to this value.
+    1/n_classes is chance only for random splits. With grouped splits the classes in a test fold are short in the
+    training folds, so a score can land below chance even with no signal (synthetic: 0.071 vs 1/k = 0.167).
+    Shuffling sample by sample breaks that structure and brings the null back to 1/k (same data: 0.169). So when
+    `groups` is given and the label is constant within each group (e.g. lab > plate), whole groups are permuted,
+    keeping the number of groups per class (same data, 20 permutations: mean 0.094, range 0.060-0.132, which
+    contains 0.071; test_shortcut_audit.py checks this).
     """
     rng = np.random.default_rng(seed)
     y = np.asarray(y)
-    vals = [_cv_score(X, rng.permutation(y), splits) for _ in range(n_perm)]
-    return {"null_mean": float(np.mean(vals)), "null_max": float(np.max(vals)), "n_perm": n_perm}
+    block = False
+    if groups is not None:
+        g = np.asarray(groups)
+        ug, inv = np.unique(g, return_inverse=True)
+        first = np.zeros(len(ug), dtype=int)
+        first[inv[::-1]] = np.arange(len(g))[::-1]
+        g_lab = y[first]
+        block = bool((g_lab[inv] == y).all())
+    vals = []
+    for _ in range(n_perm):
+        yp = rng.permutation(g_lab)[inv] if block else rng.permutation(y)
+        vals.append(_cv_score(X, yp, splits))
+    return {"null_mean": float(np.mean(vals)), "null_min": float(np.min(vals)), "null_max": float(np.max(vals)),
+            "n_perm": n_perm, "level": "group" if block else "sample"}
