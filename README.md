@@ -181,6 +181,26 @@ means is written by `reproduce_jump.py` (`dmso_between_source_sd`). Numbers in t
 (scikit-learn 1.9.1, Python 3.11); other machines can differ in the third decimal. Permutation nulls for every split were 0.123-0.127
 (1/k = 0.125), so grouped CV was not biased here.
 
+## Repeat measurements
+
+Single runs above; spread over seeds below (mean +/- SD, Linux, CPU).
+
+| Measurement | Runs | Value |
+|---|---|---|
+| OOC quality, random split (`repeat_ooc.py`, StratifiedKFold reseeded) | 10 | 0.814 +/- 0.004 |
+| OOC quality, held-out imaging date (date-to-fold assignment reshuffled) | 10 | 0.730 +/- 0.007 |
+| OOC gap, held-out minus random | 10 | -0.084 +/- 0.010 |
+| JUMP lab from DMSO wells, before / after Harmony (`summarize_seeds.py`) | 5 | 0.308 +/- 0.004 / 0.733 +/- 0.005 |
+| . permutation null, before / after | 5 | 0.100 / 0.101 |
+| JUMP positive controls, lab held out, before / after | 5 | 0.856 +/- 0.003 / 0.861 +/- 0.003 |
+| JUMP lab gap (lab held out minus random), before / after | 5 | -0.089 +/- 0.004 / -0.080 +/- 0.004 |
+
+```bash
+python repeat_ooc.py out/ooc_audit_table.parquet --seeds 10        # -> out/ooc_repeat.json
+for s in 1 2 3 4; do AI4S_OUT=out/seed$s python reproduce_jump.py --seed $s; done
+python summarize_seeds.py                                          # -> out/jump_seed_summary.json
+```
+
 ## Data licenses
 
 | Dataset | License | Source |
