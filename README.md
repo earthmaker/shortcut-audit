@@ -71,8 +71,12 @@ Display thresholds in the report (aids, not statistical tests; all numbers are s
 nuisance probe >= 2x chance and above the permutation-null maximum is "shortcut capacity present";
 label-from-nuisance >= chance + 0.05 is "confounded"; a held-out-group score >= 0.05 below the random split is
 "part of the score leans on the shortcut"; a confounded-training CV >= 0.10 above its held-out score is "exploitable".
-Progress is printed with elapsed time; on the 3,072-image OoC table (768 features) a full run took 151 s on a
-6-core desktop CPU (Intel i5-8500).
+Progress is printed with elapsed time. On the 3,072-image OoC table (768 features) a full run took 74 s on a Linux
+workstation CPU (i9-10940X) and 151-163 s on a 6-core desktop CPU (i5-8500). BLAS threads are capped at 8 by default
+(`SHORTCUT_AUDIT_THREADS=n` to change): with one thread per core on a 28-thread machine the same run took 1,764 s.
+
+Other steps on the same workstation (2026-10-06, fresh environment from `requirements.txt`): `ooc_probe.py` 18 s,
+`reproduce_jump.py` 416 s, the rest a few seconds; `ooc_extract.py` 556 s on an RTX 3080.
 
 ## Reproducing the JUMP results
 

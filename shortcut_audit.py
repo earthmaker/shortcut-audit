@@ -17,6 +17,7 @@ Probes
 """
 from __future__ import annotations
 
+import os
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -24,6 +25,12 @@ from sklearn.metrics import balanced_accuracy_score
 from sklearn.model_selection import GroupKFold, StratifiedKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from threadpoolctl import threadpool_limits
+
+# BLAS threads. With one thread per core on a many-core Linux box the small logistic-regression fits fight over
+# cores: audit.py on the OoC table took 1,764 s with 28 threads vs 77 s with 6 (i9-10940X, 2026-10-06).
+# Capped at 8 by default; override with SHORTCUT_AUDIT_THREADS.
+threadpool_limits(int(os.environ.get("SHORTCUT_AUDIT_THREADS", min(8, os.cpu_count() or 1))), user_api="blas")
 
 
 def _clf():
