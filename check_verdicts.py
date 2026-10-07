@@ -9,6 +9,10 @@
    reading must be "shortcut capacity present" (with the old rule, twice chance = 1.0 was unreachable).
 3. Positive control. The quickstart design (examples/make_synthetic.py: weak label signal, strong session signal,
    sessions confounded with the label): the split-gap reading must still fire.
+4. Scope of the guard: weak label signal, no session information. Same confounded design as check 1, but the
+   features now carry a weak label signal (label_sig 0.3, 0.5, 0.8 on one feature) and still no session information,
+   so the features offer no shortcut. The guard passes (there is a label signal to lose), and the split-gap reading
+   can still fire from the pooled-prediction bias alone. Counts how often, over seeds.
 
 Run: python check_verdicts.py [--seeds 20] [--perm 5]      -> out/check_verdicts.json and a summary on screen
 """
@@ -41,14 +45,17 @@ def noise_table(seed, n=1200, n_sessions=20, d=12, label_sig=0.0, session_sig=0.
     return df
 
 
+WEAK_SIGNALS = (0.3, 0.5, 0.8)
+
+
 def quiet(_msg):
     pass
 
 
-def false_alarms(seeds, perm):
+def false_alarms(seeds, perm, label_sig=0.0):
     rows = []
     for s in range(seeds):
-        res = audit.run_audit(noise_table(s), "quality", ["session"], perm=perm, inject=False, log=quiet)
+        res = audit.run_audit(noise_table(s, label_sig=label_sig), "quality", ["session"], perm=perm, inject=False, log=quiet)
         rnd, ho = res["split_compare"][0], res["split_compare"][1]
         (_, reading, flagged), = audit.split_flags(res)
         rows.append({"seed": s, "random": rnd["bal_acc"], "random_null": rnd["null"]["null_mean"],
@@ -56,9 +63,12 @@ def false_alarms(seeds, perm):
                      "gap": ho["gap_vs_random"], "gap_rule_only": bool(ho["gap_vs_random"] <= -audit.GAP_THRESHOLD),
                      "with_guard": bool(flagged)})
     t = pd.DataFrame(rows)
-    return {"seeds": seeds, "perm": perm, "design": "1200 samples, 12 pure-noise features, 20 sessions, "
-            "P(good) 0.8 / 0.2 alternating by session",
-            "random_mean": float(t.random.mean()), "held_out_mean": float(t.held_out.mean()),
+    return {"seeds": seeds, "perm": perm, "label_sig": label_sig,
+            "design": "1200 samples, 12 features with no session information "
+            f"(label signal {label_sig} on one feature), 20 sessions, P(good) 0.8 / 0.2 alternating by session",
+            "random_mean": float(t.random.mean()), "random_null_mean": float(t.random_null.mean()),
+            "gap_mean": float(t.gap.mean()),
+            "flagged_gaps": [float(g) for g in t.gap[t.with_guard]], "held_out_mean": float(t.held_out.mean()),
             "held_out_min": float(t.held_out.min()),
             "fires_gap_rule_only": int(t.gap_rule_only.sum()), "fires_with_guard": int(t.with_guard.sum()),
             "runs": rows}
@@ -93,7 +103,8 @@ def main():
     ap.add_argument("--perm", type=int, default=5)
     a = ap.parse_args()
     out = {"false_alarms": false_alarms(a.seeds, a.perm), "two_level_nuisance": two_level(a.perm),
-           "positive_control": positive_control(a.perm)}
+           "positive_control": positive_control(a.perm),
+           "weak_signal_no_session": [false_alarms(a.seeds, a.perm, label_sig=v) for v in WEAK_SIGNALS]}
     fa, tl, pc = out["false_alarms"], out["two_level_nuisance"], out["positive_control"]
     print(f"pure noise, label tied to session, {fa['seeds']} seeds: random {fa['random_mean']:.3f}, held-out mean "
           f"{fa['held_out_mean']:.3f} (min {fa['held_out_min']:.3f})")
@@ -104,6 +115,14 @@ def main():
           f"confound injection: {tl['confound_injection'].get('skipped', 'run')}")
     print(f"positive control: random {pc['random']:.3f} (null {pc['random_null']:.3f}), held-out {pc['held_out']:.3f} "
           f"({pc['gap']:+.3f}): {pc['reading']}")
+    print(f"weak label signal, no session information in the features, label tied to session, {a.seeds} seeds:")
+    print("  label_sig  random  null   held-out  mean gap  gap rule alone  with guard (false alarms)")
+    for w in out["weak_signal_no_session"]:
+        print(f"  {w['label_sig']:<9.1f}  {w['random_mean']:.3f}   {w['random_null_mean']:.3f}  {w['held_out_mean']:.3f}"
+              f"     {w['gap_mean']:+.3f}    {w['fires_gap_rule_only']:>2}/{w['seeds']}           "
+              f"{w['fires_with_guard']:>2}/{w['seeds']}"
+              + (f"  (flagged gaps {min(w['flagged_gaps']):+.3f} to {max(w['flagged_gaps']):+.3f})"
+                 if w["flagged_gaps"] else ""))
     os.makedirs(OUT_DIR, exist_ok=True)
     path = os.path.join(OUT_DIR, "check_verdicts.json")
     with open(path, "w") as fh:

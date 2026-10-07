@@ -23,7 +23,7 @@ Painting (CC0) and the Organ-on-a-Chip Image Dataset (see "Data licenses").
 | `audit.py` | **Entry script.** Feature table in, HTML report out |
 | `shortcut_audit.py` | The probes (importable library) |
 | `test_shortcut_audit.py` | Synthetic positive/negative-control tests, including the reading rules |
-| `check_verdicts.py` | False-alarm and two-level checks of the report's reading rules (20 seeds) |
+| `check_verdicts.py` | False-alarm, weak-signal and two-level checks of the report's reading rules (20 seeds) |
 | `examples/make_synthetic.py` | Writes a small synthetic table for a no-download quickstart |
 | `paths.py` | Data root (`AI4S_DATA`, default `./data`) and output dir (`./out`) |
 | `reproduce_jump.py`, `jump_controls.py` | JUMP reproduction |
@@ -58,6 +58,22 @@ between sessions, pooled out-of-fold predictions on held-out sessions are biased
 That is why the split-gap reading is shown only when the random split is at least 0.05 above its own permutation null;
 `check_verdicts.py` measures this (pure-noise features, label tied to session, 20 seeds: the gap rule alone fires in
 10 of 20 runs, the guarded rule in 0).
+
+The guard removes false alarms only when there is no label signal at all. `check_verdicts.py` also runs the same
+confounded design with a weak label signal on one feature and still no session information in the features, so that
+no shortcut is available: the guard then passes, and the pooled-prediction bias alone can still trigger the
+split-gap reading (20 seeds, 5 permutations, scikit-learn 1.7.2):
+
+| Label signal | Random split | Its null | Held-out session | Mean gap | Gap rule alone | Guarded rule (false alarms) |
+|---|---|---|---|---|---|---|
+| 0.3 | 0.552 | 0.499 | 0.511 | -0.041 | 5/20 | **3/20** |
+| 0.5 | 0.593 | 0.500 | 0.567 | -0.026 | 3/20 | **3/20** |
+| 0.8 | 0.650 | 0.500 | 0.634 | -0.016 | 0/20 | 0/20 |
+
+The flagged gaps in these runs were -0.102, -0.105 and -0.061 (signal 0.3) and -0.053 to -0.061 (signal 0.5). So with a
+weak label signal and label proportions that differ between sessions, a flagged split gap of this size can arise
+without any shortcut; read such gaps with this in mind. Run with
+`python check_verdicts.py` (about a minute on a laptop CPU; writes `out/check_verdicts.json`).
 
 ## `audit.py` usage
 
@@ -192,6 +208,10 @@ should match closely, small differences across library versions are possible.
 | . held-out imaging date | **0.734 (-0.084)** | 0.533 (-0.103) | 0.50 / 0.494 |
 | Confound injection (imaging date): confounded CV / held-out dates / unconfounded control | 0.904 / **0.649** / 0.737 | | 0.50 |
 
+The audit report (`audit.py` on `out/ooc_audit_table.parquet`) prints 0.823 for the same date probe: it uses all 59
+dates and all 3,072 images (chance 0.017), including the nine dates with fewer than ten images (70 images), whereas
+the table above keeps the 50 dates with at least ten. Both values use a stratified random five-fold split.
+
 Distributed train/test split: all 656 test images come from imaging dates that also appear in training (57 of 57
 test dates). On that split the same DINOv2 + logistic-regression model gets balanced accuracy 0.798 and AUC 0.885,
 higher than the held-out-date score of 0.734. The claim is limited to this: the distributed split does not separate
@@ -224,7 +244,9 @@ the small DMSO subset can move apart in the process; this is not evidence that H
 general, and we did not re-run Harmony. The standard deviation of lab
 means is written by `reproduce_jump.py` (`dmso_between_source_sd`). Numbers in this table are from one Linux run
 (scikit-learn 1.9.1, Python 3.11; see "Library versions"). Permutation nulls for every split were 0.123-0.127
-(1/k = 0.125), so grouped CV was not biased here.
+(1/k = 0.125). These nulls shuffle labels well by well and so cannot show the grouped-CV bias (see Quickstart); we
+expect that bias to be small here because the positive controls are nearly balanced across labs (compound from lab
+alone 0.149 against 0.125).
 
 ## Repeat measurements
 
