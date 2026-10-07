@@ -11,7 +11,7 @@ Probes
   label_from_nuisance  how well is the label predicted from one-hot nuisance variables alone, without features?
                        -> confounding baseline
   split_compare        the same task scored with a random split vs. a held-out-group split
-                       -> the share of the score that leans on the shortcut
+                       -> the share of the score that does not transfer to unseen groups (shortcut reliance is one component)
   confound_injection   what happens when label and nuisance are deliberately entangled in the training set:
                        inflation and collapse
 """

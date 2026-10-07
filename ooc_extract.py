@@ -1,12 +1,14 @@
 """Extract DINOv2 features and classical features (brightness statistics) from OOC Image Dataset images.
 
-Run: python ooc_extract.py [--model facebook/dinov2-small] [--limit N]
+Run: python ooc_extract.py [--model facebook/dinov2-small] [--device auto|cpu|cuda|mps] [--limit N]
 Input: $AI4S_DATA/ooc/OOC_image_dataset.zip (read directly from the zip, not unpacked; see paths.py)
 Output: out/ooc_feats_<model>.npz with ids, split (distributed split folder name), dino, classic
 
 The classical features are a control for "can session be recognized without deep learning": in brightfield,
 brightness, contrast and illumination gradient can differ between imaging sessions.
-A GPU (CUDA or Apple MPS) is used if present; the CPU works too, only slower.
+--device auto (default) picks CUDA, then Apple MPS, then CPU. Use --device cpu if the GPU path fails: on older
+PyTorch builds MPS lacks the bicubic interpolation that DINOv2 uses to resize its position embeddings to 448 px
+(unsupported MPS operations fall back to the CPU via PYTORCH_ENABLE_MPS_FALLBACK, set below).
 """
 import argparse
 import io
@@ -14,10 +16,12 @@ import os
 import sys
 import zipfile
 
-import numpy as np
-import torch
-from PIL import Image
-from transformers import AutoModel
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")   # must be set before torch is imported
+
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+from PIL import Image  # noqa: E402
+from transformers import AutoModel  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from paths import OOC_ZIP as ZIP, OUT_DIR as OUT  # noqa: E402
@@ -41,11 +45,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="facebook/dinov2-small")
     ap.add_argument("--size", type=int, default=448)
+    ap.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--zip", default=ZIP)
     ap.add_argument("--out", default=OUT)
     a = ap.parse_args()
-    dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    if a.device == "auto":
+        dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    else:
+        dev = a.device
     model = AutoModel.from_pretrained(a.model).to(dev).eval()
     zf = zipfile.ZipFile(a.zip)
     names = sorted(n for n in zf.namelist() if n.lower().endswith(EXT) and "__MACOSX" not in n)

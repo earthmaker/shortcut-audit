@@ -1,0 +1,6 @@
+# Only for ooc_extract.py (DINOv2 image features). Not needed if you use the released feature file.
+-r requirements.txt
+torch>=2.2
+# transformers 5 requires PyTorch >= 2.5 and silently disables older torch builds (e.g. 2.2.2, the last for Intel Macs)
+transformers>=4.40,<5
+pillow>=10

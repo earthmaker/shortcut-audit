@@ -32,6 +32,9 @@ def main():
              "pos8_lab_gap": st(np.array(sc(3)) - np.array(sc(0)))}
         for k in ("inflated_cv", "confounded_on_heldout", "balanced_on_heldout"):
             r["inject_" + k] = st([d["confound_injection_batch"][k] for d in ds])
+        # cost of the confound on the same held-out batches: unconfounded control minus confounded model
+        r["inject_cost"] = st([d["confound_injection_batch"]["balanced_on_heldout"]
+                               - d["confound_injection_batch"]["confounded_on_heldout"] for d in ds])
         out[tag] = r
         print(tag)
         for k, v in r.items():

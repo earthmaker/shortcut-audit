@@ -2,6 +2,8 @@
 
 - Features carry only nuisance (lab) signal, no label signal: nuisance_probe high, split_compare near chance.
 - Features carry only label signal: nuisance_probe near chance, random and grouped splits both high.
+- Reading rules (audit.py): no split-gap false alarm on pure-noise features with the label tied to the session, a
+  two-level nuisance can be flagged, and the quickstart design is still flagged (check_verdicts.py, 10 seeds here).
 Run: python test_shortcut_audit.py
 """
 import os
@@ -65,6 +67,15 @@ def main():
           "/ sample permutation", round(sn["null_mean"], 3))
     assert gn["level"] == "group" and sn["level"] == "sample" and gn["null_min"] <= s0 <= gn["null_max"]
     assert s0 < sn["null_mean"] - 0.05 and gn["null_mean"] < sn["null_mean"] - 0.03
+    # Reading rules of the report: the split-gap reading needs a label signal on the random split first.
+    import check_verdicts as cvd
+    fa = cvd.false_alarms(seeds=10, perm=5)
+    tl = cvd.two_level(perm=5)
+    pc = cvd.positive_control(perm=5)
+    print("reading rules: pure-noise split-gap alarms, gap rule alone", f"{fa['fires_gap_rule_only']}/10,",
+          f"with guard {fa['fires_with_guard']}/10 · two-level lot {tl['bal_acc']:.3f} flagged {tl['new_rule']}",
+          f"· positive control flagged {pc['flagged']}")
+    assert fa["fires_with_guard"] == 0 and tl["new_rule"] and pc["flagged"]
     print("PASS")
 
 

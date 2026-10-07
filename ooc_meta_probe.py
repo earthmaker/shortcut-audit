@@ -1,4 +1,4 @@
-"""Predict the quality label of the OOC Image Dataset (Movcana et al. 2024, Zenodo 10203721, CC-BY-4.0) from
+"""Predict the quality label of the OOC Image Dataset (Movčana et al. 2024, Zenodo 10203721; CC BY 4.0 on Zenodo, CC BY-SA per the data paper) from
 metadata alone.
 
 How well do imaging date (leading part of imageID), cell type and time predict good/bad without looking at a
