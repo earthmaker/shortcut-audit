@@ -28,6 +28,7 @@ Painting (CC0) and the Organ-on-a-Chip Image Dataset (see "Data licenses").
 | `paths.py` | Data root (`AI4S_DATA`, default `./data`) and output dir (`./out`) |
 | `reproduce_jump.py`, `jump_controls.py` | JUMP reproduction |
 | `ooc_meta_probe.py`, `ooc_extract.py`, `ooc_probe.py`, `ooc_table.py` | Organ-on-a-Chip (OOC) reproduction |
+| `ooc_robustness.py` | OOC robustness checks (forward-in-time check, held-out-date bias checks, date probe within one label and within cell type x day, date-disjoint splits at the distributed test size, 200-permutation nulls, classic features without image size) -> `out/ooc_robustness.json` |
 
 ## Install
 
@@ -89,8 +90,13 @@ Progress is printed with elapsed time. On the 3,072-image OoC table (768 feature
 workstation CPU (i9-10940X) and 151-163 s on a 6-core desktop CPU (i5-8500). BLAS threads are capped at 8 by default
 (`SHORTCUT_AUDIT_THREADS=n` to change): with one thread per core on a 28-thread machine the same run took 1,764 s.
 
-Other steps on the same workstation (2026-10-06, fresh Python 3.11 environment, scikit-learn 1.9.1): `ooc_probe.py` 18 s,
-`reproduce_jump.py` 416 s, the rest a few seconds; `ooc_extract.py` 556 s on an RTX 3080.
+Run times of every step (2026-10-06, fresh Python 3.11 environment, scikit-learn 1.9.1, Linux workstation CPU
+i9-10940X): `test_shortcut_audit.py` 2 s, `ooc_meta_probe.py` 2 s, `ooc_probe.py` 18 s, `ooc_table.py` 2 s, `audit.py`
+on the OoC table 74 s, `jump_controls.py` 3 s, `reproduce_jump.py` (both versions) 416 s; on a 6-core desktop CPU
+(i5-8500) `audit.py` took 163 s. `ooc_extract.py` took 556 s for the 3,072 OoC images on an NVIDIA RTX 3080 and
+reproduced the released features bit for bit. On the i5-8500 (2026-10-07, Python 3.10, scikit-learn 1.7.2) the current
+`test_shortcut_audit.py`, which also checks the reading rules, takes about 10 s, and `ooc_robustness.py` took 3,295 s,
+of which 3,205 s were the 200-permutation nulls.
 
 ## Reproducing the JUMP results
 
@@ -145,6 +151,7 @@ python ooc_probe.py                           # all image probes -> out/ooc_prob
 python ooc_table.py                           # table for audit.py
 python audit.py out/ooc_audit_table.parquet --label quality --nuisance session cell_type --group session \
     --title "OOC brightfield quality classifier" --out out/ooc_audit_report.html
+python ooc_robustness.py      # out/ooc_feats_dinov2-small.npz -> out/ooc_robustness.json (~55 min on a 6-core i5 CPU, 200 permutations; --n-perm 3 for a ~2.5 min check)
 ```
 
 **Full path, from the images.** Download the zip as well and extract the features yourself (needs
