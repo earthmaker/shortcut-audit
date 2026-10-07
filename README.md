@@ -249,9 +249,12 @@ produced which numbers in this README:
 | Numbers | scikit-learn |
 |---|---|
 | Synthetic tests, quickstart, `check_verdicts.py`, all OoC tables | 1.7.2 (`requirements.txt`) |
-| All JUMP tables and the JUMP seed repeats | 1.9.1 — to reproduce them exactly, `pip install scikit-learn==1.9.1` |
+| All JUMP tables and the JUMP seed repeats | 1.9.1 (Linux) — `pip install scikit-learn==1.9.1` to reproduce them |
 
-Random-split values and the OoC repeat table (`repeat_ooc.py` makes its own fold assignment) do not depend on this.
+Measured on the JUMP run (2026-10-07, Intel Mac): with 1.9.1 every JUMP value matched the Linux run to within 0.001
+(lab from DMSO 0.307 / 0.729); with 1.7.2 lab from DMSO became 0.303 / 0.731 and the other values moved by at most
+0.001. The OoC random-split values and the OoC repeat table (`repeat_ooc.py` makes its own fold assignment) were the
+same under both versions.
 Other tested versions: Python 3.11, numpy 2.2, pandas 2.3, pyarrow 25; for extraction torch 2.2.2 with
 transformers 4.57 (Intel Mac, CPU and MPS) and the Linux workstation run above.
 
