@@ -89,7 +89,7 @@ Progress is printed with elapsed time. On the 3,072-image OoC table (768 feature
 workstation CPU (i9-10940X) and 151-163 s on a 6-core desktop CPU (i5-8500). BLAS threads are capped at 8 by default
 (`SHORTCUT_AUDIT_THREADS=n` to change): with one thread per core on a 28-thread machine the same run took 1,764 s.
 
-Other steps on the same workstation (2026-10-06, fresh environment from `requirements.txt`): `ooc_probe.py` 18 s,
+Other steps on the same workstation (2026-10-06, fresh Python 3.11 environment, scikit-learn 1.9.1): `ooc_probe.py` 18 s,
 `reproduce_jump.py` 416 s, the rest a few seconds; `ooc_extract.py` 556 s on an RTX 3080.
 
 ## Reproducing the JUMP results
